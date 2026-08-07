@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from django.conf import settings
 from django.shortcuts import get_object_or_404
-from rest_framework import status
+from rest_framework import permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -16,6 +16,8 @@ from apps.projects.views import get_project_for_user
 
 
 class GraphView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
     def get(self, request, project_id, graph_type):
         project = get_project_for_user(project_id, request.user)
         if not project.files.exists() and project.status == "draft":
@@ -93,6 +95,8 @@ class GraphView(APIView):
 
 
 class NodeDetailView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
     def get(self, request, project_id, node_uid):
         project = get_project_for_user(project_id, request.user)
         # Search snapshots first
@@ -130,6 +134,8 @@ class NodeDetailView(APIView):
 
 class RebuildGraphsView(APIView):
     """Force rebuild graph snapshots from project files on disk."""
+
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, project_id):
         project = get_project_for_user(project_id, request.user)

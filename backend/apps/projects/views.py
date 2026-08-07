@@ -6,7 +6,8 @@ import logging
 from pathlib import Path
 
 from django.shortcuts import get_object_or_404
-from rest_framework import mixins, status, viewsets
+from rest_framework import mixins, permissions, status, viewsets
+from rest_framework.exceptions import PermissionDenied, NotAuthenticated
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -31,11 +32,12 @@ logger = logging.getLogger(__name__)
 
 
 def get_project_for_user(project_id: str, user) -> Project:
-    from django.db.models import Q
+    if not user or not user.is_authenticated:
+        raise NotAuthenticated("Authentication required.")
     return get_object_or_404(
-        Project,
-        Q(owner=user) | Q(owner__isnull=True),
+        Project.objects.exclude(status=ProjectStatus.ARCHIVED),
         id=project_id,
+        owner=user,
     )
 
 
@@ -47,19 +49,17 @@ class ProjectViewSet(
     mixins.ListModelMixin,
     viewsets.GenericViewSet,
 ):
+    permission_classes = [permissions.IsAuthenticated]
     lookup_field = "id"
     search_fields = ("name", "description", "slug")
     filterset_fields = ("status", "visibility")
     ordering_fields = ("created_at", "name", "loc_total", "file_count")
 
     def get_queryset(self):
-        if not self.request.user.is_authenticated:
+        if not self.request.user or not self.request.user.is_authenticated:
             return Project.objects.none()
-        from django.db.models import Q
         return (
-            Project.objects.filter(
-                Q(owner=self.request.user) | Q(owner__isnull=True)
-            )
+            Project.objects.filter(owner=self.request.user)
             .exclude(status=ProjectStatus.ARCHIVED)
             .prefetch_related("languages")
         )
@@ -120,6 +120,8 @@ class ProjectViewSet(
 
 
 class FileTreeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
     def get(self, request, project_id):
         project = get_project_for_user(project_id, request.user)
         return Response(
@@ -133,6 +135,8 @@ class FileTreeView(APIView):
 
 class ReanalyzeView(APIView):
     """Re-run analysis for an existing project source."""
+
+    permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request, project_id):
         project = get_project_for_user(project_id, request.user)
@@ -153,6 +157,7 @@ class ReanalyzeView(APIView):
 
 
 class IngestZipView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, project_id):
@@ -203,6 +208,7 @@ class IngestZipView(APIView):
 
 
 class IngestGitHubView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
     parser_classes = [JSONParser]
 
     def post(self, request, project_id):
