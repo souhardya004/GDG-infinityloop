@@ -93,3 +93,33 @@ export type FileTreeNode = {
   file_count?: number;
   children?: FileTreeNode[];
 };
+
+export type User = {
+  id: number | string;
+  username: string;
+  email: string;
+  first_name?: string;
+  last_name?: string;
+  avatar_url?: string;
+  provider: "email" | "github" | "google";
+  github_username?: string;
+  date_joined?: string;
+};
+
+export type AuthResponse = {
+  user: User;
+  token: string;
+  created?: boolean;
+};
+
+export type ProvidersConfig = {
+  github: {
+    enabled: boolean;
+    client_id: string;
+  };
+  google: {
+    enabled: boolean;
+    client_id: string;
+  };
+};
+

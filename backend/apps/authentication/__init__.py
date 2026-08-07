@@ -1,0 +1,1 @@
+"""Authentication app for CodeScope."""

@@ -12,20 +12,20 @@ from apps.projects.models import Project
 
 class JobDetailView(APIView):
     def get(self, request, project_id, job_id):
-        job = get_object_or_404(AnalysisJob, id=job_id, project_id=project_id)
+        job = get_object_or_404(AnalysisJob, id=job_id, project_id=project_id, project__owner=request.user)
         return Response(JobSerializer(job).data)
 
 
 class JobEventsView(APIView):
     def get(self, request, project_id, job_id):
-        job = get_object_or_404(AnalysisJob, id=job_id, project_id=project_id)
+        job = get_object_or_404(AnalysisJob, id=job_id, project_id=project_id, project__owner=request.user)
         events = job.events.all()
         return Response(JobEventSerializer(events, many=True).data)
 
 
 class JobCancelView(APIView):
     def post(self, request, project_id, job_id):
-        job = get_object_or_404(AnalysisJob, id=job_id, project_id=project_id)
+        job = get_object_or_404(AnalysisJob, id=job_id, project_id=project_id, project__owner=request.user)
         if job.status in {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED}:
             return Response(
                 {"detail": f"Job already {job.status}."},

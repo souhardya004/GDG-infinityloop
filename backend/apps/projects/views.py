@@ -38,11 +38,15 @@ class ProjectViewSet(
     mixins.ListModelMixin,
     viewsets.GenericViewSet,
 ):
-    queryset = Project.objects.prefetch_related("languages").all()
     lookup_field = "id"
     search_fields = ("name", "description", "slug")
     filterset_fields = ("status", "visibility")
     ordering_fields = ("created_at", "name", "loc_total", "file_count")
+
+    def get_queryset(self):
+        if self.request.user.is_authenticated:
+            return Project.objects.filter(owner=self.request.user).prefetch_related("languages")
+        return Project.objects.none()
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -54,8 +58,7 @@ class ProjectViewSet(
         return ProjectSerializer
 
     def perform_create(self, serializer):
-        owner = self.request.user if self.request.user.is_authenticated else None
-        serializer.save(owner=owner)
+        serializer.save(owner=self.request.user)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -71,7 +74,7 @@ class ProjectViewSet(
 
 class FileTreeView(APIView):
     def get(self, request, project_id):
-        project = get_object_or_404(Project, id=project_id)
+        project = get_object_or_404(Project, id=project_id, owner=request.user)
         return Response(
             {
                 "project_id": str(project.id),
@@ -85,7 +88,7 @@ class ReanalyzeView(APIView):
     """Re-run analysis for an existing project source."""
 
     def post(self, request, project_id):
-        project = get_object_or_404(Project, id=project_id)
+        project = get_object_or_404(Project, id=project_id, owner=request.user)
         if not project.sources.exists() and not project.root_path:
             return Response(
                 {"detail": "No source available to re-analyze."},
@@ -106,7 +109,7 @@ class IngestZipView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, project_id):
-        project = get_object_or_404(Project, id=project_id)
+        project = get_object_or_404(Project, id=project_id, owner=request.user)
         upload = request.FILES.get("file")
         if upload is None:
             return Response(
@@ -156,7 +159,7 @@ class IngestGitHubView(APIView):
     parser_classes = [JSONParser]
 
     def post(self, request, project_id):
-        project = get_object_or_404(Project, id=project_id)
+        project = get_object_or_404(Project, id=project_id, owner=request.user)
         serializer = IngestGitHubSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data

@@ -18,6 +18,20 @@ function resolveApiBase(): string {
 
 const API_BASE = resolveApiBase();
 
+const TOKEN_STORAGE_KEY = "codescope_token";
+
+export function getStoredToken(): string | null {
+  return localStorage.getItem(TOKEN_STORAGE_KEY);
+}
+
+export function setStoredToken(token: string | null) {
+  if (token) {
+    localStorage.setItem(TOKEN_STORAGE_KEY, token);
+  } else {
+    localStorage.removeItem(TOKEN_STORAGE_KEY);
+  }
+}
+
 export class ApiError extends Error {
   status: number;
   body: unknown;
@@ -30,12 +44,19 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getStoredToken();
+  const authHeaders: Record<string, string> = {};
+  if (token) {
+    authHeaders["Authorization"] = `Token ${token}`;
+  }
+
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
       ...init,
       headers: {
         ...(init?.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
+        ...authHeaders,
         ...init?.headers,
       },
     });
@@ -67,6 +88,44 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  // Auth endpoints
+  auth: {
+    me: () => request<{ user: import("../types/api").User }>("/auth/me/"),
+    login: (payload: { username_or_email: string; password: string }) =>
+      request<import("../types/api").AuthResponse>("/auth/login/", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    signup: (payload: { email: string; password: string; username?: string; full_name?: string }) =>
+      request<import("../types/api").AuthResponse>("/auth/signup/", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    github: (payload: { code: string; redirect_uri?: string }) =>
+      request<import("../types/api").AuthResponse>("/auth/github/", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    google: (payload: { code?: string; id_token?: string; redirect_uri?: string }) =>
+      request<import("../types/api").AuthResponse>("/auth/google/", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    demo: () =>
+      request<import("../types/api").AuthResponse>("/auth/demo/", {
+        method: "POST",
+        body: "{}",
+      }),
+    logout: () =>
+      request<{ detail: string }>("/auth/logout/", {
+        method: "POST",
+        body: "{}",
+      }),
+    providers: () =>
+      request<import("../types/api").ProvidersConfig>("/auth/providers/"),
+  },
+
+  // Project endpoints
   listProjects: () =>
     request<{ results?: import("../types/api").ProjectSummary[] } | import("../types/api").ProjectSummary[]>(
       "/projects/",
@@ -122,3 +181,4 @@ export const api = {
 
   health: () => request<{ status: string }>("/health/"),
 };
+
