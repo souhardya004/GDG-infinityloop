@@ -132,6 +132,18 @@ class RebuildGraphsView(APIView):
 
     def post(self, request, project_id):
         project = get_object_or_404(Project, id=project_id)
+        if (not project.files.exists() or project.status in {"ingesting", "analyzing", "draft"}) and project.sources.exists():
+            from apps.analysis.models import AnalysisJob, JobStatus, JobType
+            from apps.analysis.pipeline import AnalysisPipeline
+
+            job = AnalysisJob.objects.create(
+                project=project,
+                job_type=JobType.FULL,
+                status=JobStatus.QUEUED,
+            )
+            AnalysisPipeline(job_id=str(job.id)).run()
+            project.refresh_from_db()
+
         from apps.graphs.services.snapshots import rebuild_fragment_from_disk, save_snapshots
 
         fragment = rebuild_fragment_from_disk(project)
