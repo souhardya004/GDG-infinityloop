@@ -139,6 +139,12 @@ export const api = {
 
   getProject: (id: string) => request<import("../types/api").Project>(`/projects/${id}/`),
 
+  deleteProject: (id: string) =>
+    request<void>(`/projects/${id}/`, {
+      method: "DELETE",
+    }),
+
+
   ingestZip: async (projectId: string, file: File) => {
     const form = new FormData();
     form.append("file", file);

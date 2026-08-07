@@ -101,3 +101,35 @@ def test_project_isolation():
     # User 2 tries to access User 1's graph -> 404
     graph2 = client2.get(f"/api/v1/projects/{proj1_id}/graphs/architecture/")
     assert graph2.status_code == status.HTTP_404_NOT_FOUND
+
+
+@pytest.mark.django_db
+def test_project_deletion():
+    client1 = APIClient()
+    client2 = APIClient()
+
+    user1 = User.objects.create_user(username="owner_user", email="owner@example.com", password="pw")
+    user2 = User.objects.create_user(username="other_user", email="other@example.com", password="pw")
+
+    from rest_framework.authtoken.models import Token
+    token1, _ = Token.objects.get_or_create(user=user1)
+    token2, _ = Token.objects.get_or_create(user=user2)
+
+    client1.credentials(HTTP_AUTHORIZATION=f"Token {token1.key}")
+    client2.credentials(HTTP_AUTHORIZATION=f"Token {token2.key}")
+
+    # 1. User 1 creates a project
+    create_res = client1.post("/api/v1/projects/", {"name": "Project to Delete"}, format="json")
+    assert create_res.status_code == status.HTTP_201_CREATED
+    proj_id = create_res.json()["id"]
+
+    # 2. User 2 tries to delete User 1's project -> 404 Not Found
+    del_res_unauthorized = client2.delete(f"/api/v1/projects/{proj_id}/")
+    assert del_res_unauthorized.status_code == status.HTTP_404_NOT_FOUND
+    assert Project.objects.filter(id=proj_id).exists()
+
+    # 3. User 1 deletes their own project -> 204 No Content
+    del_res = client1.delete(f"/api/v1/projects/{proj_id}/")
+    assert del_res.status_code == status.HTTP_204_NO_CONTENT
+    assert not Project.objects.filter(id=proj_id).exists()
+

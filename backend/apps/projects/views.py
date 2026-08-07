@@ -68,8 +68,33 @@ class ProjectViewSet(
         return Response(ProjectSerializer(project).data, status=status.HTTP_201_CREATED)
 
     def perform_destroy(self, instance: Project):
-        instance.status = ProjectStatus.ARCHIVED
-        instance.save(update_fields=["status", "updated_at"])
+        import shutil
+        from django.conf import settings
+        from apps.projects.services.ingest import project_storage_root
+
+        # 1. Clean up files on disk
+        try:
+            storage_path = project_storage_root(str(instance.id))
+            if storage_path.exists():
+                shutil.rmtree(storage_path, ignore_errors=True)
+        except Exception as exc:
+            logger.warning("Failed to clean up storage for project %s: %s", instance.id, exc)
+
+        # 2. Clean up Neo4j if enabled
+        if getattr(settings, "NEO4J_ENABLED", False):
+            try:
+                from apps.graphs.services.neo4j_client import Neo4jGraphStore
+
+                store = Neo4jGraphStore()
+                try:
+                    store.delete_project(str(instance.id))
+                finally:
+                    store.close()
+            except Exception as exc:
+                logger.warning("Failed to delete Neo4j graph for project %s: %s", instance.id, exc)
+
+        # 3. Purge database instance and all cascades (files, snapshots, jobs, sources)
+        instance.delete()
 
 
 class FileTreeView(APIView):

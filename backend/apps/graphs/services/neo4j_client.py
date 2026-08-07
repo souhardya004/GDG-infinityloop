@@ -22,6 +22,13 @@ class Neo4jGraphStore:
     def close(self) -> None:
         self._driver.close()
 
+    def delete_project(self, project_id: str) -> None:
+        with self._driver.session() as session:
+            session.run(
+                "MATCH (n:CodeNode {project_id: $project_id}) DETACH DELETE n",
+                project_id=project_id,
+            )
+
     def replace_project_graph(
         self,
         project_id: str,
