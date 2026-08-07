@@ -119,13 +119,21 @@ MEDIA_URL = "/media/"
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
+def _normalize_origin(origin: str) -> str:
+    val = origin.strip().rstrip("/")
+    if not val:
+        return ""
+    if not (val.startswith("http://") or val.startswith("https://")):
+        return f"https://{val}"
+    return val
+
+
+_raw_cors = os.getenv(
+    "CORS_ALLOWED_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173",
+)
 CORS_ALLOWED_ORIGINS = [
-    o.strip()
-    for o in os.getenv(
-        "CORS_ALLOWED_ORIGINS",
-        "http://localhost:5173,http://127.0.0.1:5173",
-    ).split(",")
-    if o.strip()
+    _normalize_origin(o) for o in _raw_cors.split(",") if _normalize_origin(o)
 ]
 CORS_ALLOWED_ORIGIN_REGEXES = [
     r.strip()
@@ -134,8 +142,13 @@ CORS_ALLOWED_ORIGIN_REGEXES = [
 ]
 CORS_ALLOW_CREDENTIALS = True
 
-_csrf = [o.strip() for o in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()]
-CSRF_TRUSTED_ORIGINS = _csrf if _csrf else list(CORS_ALLOWED_ORIGINS)
+_raw_csrf = os.getenv("CSRF_TRUSTED_ORIGINS", "").strip()
+if _raw_csrf:
+    CSRF_TRUSTED_ORIGINS = [
+        _normalize_origin(o) for o in _raw_csrf.split(",") if _normalize_origin(o)
+    ]
+else:
+    CSRF_TRUSTED_ORIGINS = list(CORS_ALLOWED_ORIGINS)
 
 if not DEBUG:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
