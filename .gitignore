@@ -1,7 +1,9 @@
 # CodeScope
 .env
 .env.local
+.env.docker
 !.env.example
+!.env.docker.example
 
 __pycache__/
 *.py[cod]

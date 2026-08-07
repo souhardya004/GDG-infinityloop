@@ -40,11 +40,41 @@ npm run dev
 
 UI: http://localhost:5173
 
-### Docker (optional)
+### Docker (local dev)
 
 ```bash
 docker compose up --build
 ```
+
+- UI: http://localhost:5173 (nginx proxies `/api` → backend)
+- API docs: http://localhost:8000/api/docs/
+- Postgres: `localhost:5432`, Redis: `6379`, Neo4j browser: http://localhost:7474
+
+### Docker (production deploy)
+
+Run the full stack on a VPS, EC2 instance, or any Docker host:
+
+```bash
+cp .env.docker.example .env.docker
+# Edit .env.docker — set SECRET_KEY, passwords, PUBLIC_URL, CORS/CSRF origins
+
+docker compose --env-file .env.docker -f docker-compose.prod.yml up -d --build
+```
+
+- UI: `http://<your-host>` (port 80 by default, set `HTTP_PORT` in `.env.docker`)
+- Health: `GET /api/v1/health/` (via nginx at `/api/v1/health/`)
+- Only the frontend port is exposed; Postgres/Redis/Neo4j stay on the internal network
+- Uploaded files persist in the `media` Docker volume
+
+Useful commands:
+
+```bash
+docker compose --env-file .env.docker -f docker-compose.prod.yml logs -f backend worker
+docker compose --env-file .env.docker -f docker-compose.prod.yml down
+docker compose --env-file .env.docker -f docker-compose.prod.yml up -d --build   # redeploy
+```
+
+Put a reverse proxy (Caddy, Traefik, nginx) in front for HTTPS and set `CORS_ALLOWED_ORIGINS` / `CSRF_TRUSTED_ORIGINS` to your `https://` domain.
 
 ## Deploy (Vercel + Render)
 

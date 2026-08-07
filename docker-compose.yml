@@ -1,3 +1,12 @@
+# Local development stack — exposes service ports for debugging.
+#
+#   docker compose up --build
+#
+# UI: http://localhost:5173
+# API: http://localhost:8000/api/docs/
+
+name: codescope-dev
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -9,11 +18,21 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U codescope -d codescope"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   redis:
     image: redis:7-alpine
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   neo4j:
     image: neo4j:5-community
@@ -24,6 +43,12 @@ services:
       - "7687:7687"
     volumes:
       - neo4jdata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
 
   backend:
     build:
@@ -31,49 +56,57 @@ services:
       dockerfile: Dockerfile
     environment:
       DEBUG: "False"
-      SECRET_KEY: change-me
+      SECRET_KEY: dev-docker-secret
+      RUN_MIGRATIONS: "true"
       DATABASE_URL: postgres://codescope:codescope@postgres:5432/codescope
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
       CELERY_TASK_ALWAYS_EAGER: "False"
       REDIS_URL: redis://redis:6379/0
+      NEO4J_ENABLED: "true"
       NEO4J_URI: bolt://neo4j:7687
       NEO4J_USER: neo4j
       NEO4J_PASSWORD: codescope-neo4j
       CORS_ALLOWED_ORIGINS: http://localhost:5173,http://localhost:3000
+      CSRF_TRUSTED_ORIGINS: http://localhost:5173,http://localhost:3000
       ALLOWED_HOSTS: "*"
+      MEDIA_ROOT: /app/media
     ports:
       - "8000:8000"
     volumes:
       - media:/app/media
     depends_on:
-      - postgres
-      - redis
-      - neo4j
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
 
   worker:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    command: celery -A config worker -l INFO
+    command: ["celery", "-A", "config", "worker", "-l", "INFO", "--concurrency", "2"]
     environment:
       DEBUG: "False"
-      SECRET_KEY: change-me
+      SECRET_KEY: dev-docker-secret
+      RUN_MIGRATIONS: "false"
       DATABASE_URL: postgres://codescope:codescope@postgres:5432/codescope
       CELERY_BROKER_URL: redis://redis:6379/1
       CELERY_RESULT_BACKEND: redis://redis:6379/2
       CELERY_TASK_ALWAYS_EAGER: "False"
       REDIS_URL: redis://redis:6379/0
+      NEO4J_ENABLED: "true"
       NEO4J_URI: bolt://neo4j:7687
       NEO4J_USER: neo4j
       NEO4J_PASSWORD: codescope-neo4j
+      MEDIA_ROOT: /app/media
     volumes:
       - media:/app/media
     depends_on:
-      - postgres
-      - redis
-      - neo4j
-      - backend
+      backend:
+        condition: service_started
 
   frontend:
     build:

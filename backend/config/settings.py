@@ -77,12 +77,13 @@ WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
 
 _database_url = os.getenv("DATABASE_URL", "").strip()
+_db_ssl_require = os.getenv("DB_SSL_REQUIRE", "false").lower() in {"1", "true", "yes"}
 if _database_url:
     DATABASES = {
         "default": dj_database_url.parse(
             _database_url,
             conn_max_age=600,
-            ssl_require=not DEBUG,
+            ssl_require=_db_ssl_require,
         ),
     }
 else:
