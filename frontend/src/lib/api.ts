@@ -1,4 +1,22 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api/v1";
+function resolveApiBase(): string {
+  const envUrl = import.meta.env.VITE_API_BASE_URL;
+  if (!envUrl || typeof envUrl !== "string") {
+    return "/api/v1";
+  }
+  const trimmed = envUrl.trim().replace(/\/+$/, "");
+  if (!trimmed) {
+    return "/api/v1";
+  }
+  if (trimmed.endsWith("/api/v1")) {
+    return trimmed;
+  }
+  if (trimmed.endsWith("/api")) {
+    return `${trimmed}/v1`;
+  }
+  return `${trimmed}/api/v1`;
+}
+
+const API_BASE = resolveApiBase();
 
 export class ApiError extends Error {
   status: number;
@@ -33,7 +51,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     try {
       data = JSON.parse(text);
     } catch {
-      data = { detail: text.slice(0, 200) };
+      if (text.trim().startsWith("<")) {
+        data = {
+          detail: `API endpoint returned HTTP ${response.status} (${response.statusText || "Not Found"}). Check that VITE_API_BASE_URL is configured correctly.`,
+        };
+      } else {
+        data = { detail: text.slice(0, 200) };
+      }
     }
   }
   if (!response.ok) {
