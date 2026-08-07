@@ -42,20 +42,23 @@ class ReadyView(APIView):
             if not settings.DEBUG:
                 overall = False
 
-        try:
-            from neo4j import GraphDatabase
+        if settings.NEO4J_ENABLED:
+            try:
+                from neo4j import GraphDatabase
 
-            driver = GraphDatabase.driver(
-                settings.NEO4J_URI,
-                auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD),
-            )
-            driver.verify_connectivity()
-            driver.close()
-            checks["neo4j"] = "ok"
-        except Exception as exc:  # noqa: BLE001
-            checks["neo4j"] = f"error: {exc}"
-            if not settings.DEBUG:
-                overall = False
+                driver = GraphDatabase.driver(
+                    settings.NEO4J_URI,
+                    auth=(settings.NEO4J_USER, settings.NEO4J_PASSWORD),
+                )
+                driver.verify_connectivity()
+                driver.close()
+                checks["neo4j"] = "ok"
+            except Exception as exc:  # noqa: BLE001
+                checks["neo4j"] = f"error: {exc}"
+                if not settings.DEBUG:
+                    overall = False
+        else:
+            checks["neo4j"] = "disabled"
 
         code = status.HTTP_200_OK if overall else status.HTTP_503_SERVICE_UNAVAILABLE
         return Response({"status": "ready" if overall else "degraded", "checks": checks}, status=code)

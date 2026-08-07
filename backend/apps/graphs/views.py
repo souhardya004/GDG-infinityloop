@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from django.conf import settings
 from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.response import Response
@@ -30,7 +31,11 @@ class GraphView(APIView):
             data = ensure_project_graphs(project, graph_type)
 
         # 2) Optional Neo4j enrichment if snapshot empty
-        if (not data or not data.get("nodes")) and graph_type not in {"folder"}:
+        if (
+            settings.NEO4J_ENABLED
+            and (not data or not data.get("nodes"))
+            and graph_type not in {"folder"}
+        ):
             try:
                 store = Neo4jGraphStore()
                 try:
@@ -106,13 +111,16 @@ class NodeDetailView(APIView):
                             "line_end": props.get("line_end"),
                         }
                     )
-        try:
-            store = Neo4jGraphStore()
+        if settings.NEO4J_ENABLED:
             try:
-                node = store.get_node(str(project_id), node_uid)
-            finally:
-                store.close()
-        except Exception:  # noqa: BLE001
+                store = Neo4jGraphStore()
+                try:
+                    node = store.get_node(str(project_id), node_uid)
+                finally:
+                    store.close()
+            except Exception:  # noqa: BLE001
+                node = None
+        else:
             node = None
         if node is None:
             return Response({"detail": "Node not found."}, status=status.HTTP_404_NOT_FOUND)

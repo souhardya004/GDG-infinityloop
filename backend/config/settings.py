@@ -14,9 +14,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-only-insecure-key")
 DEBUG = os.getenv("DEBUG", "True").lower() in {"1", "true", "yes"}
-ALLOWED_HOSTS = [
+
+_allowed = [
     h.strip() for h in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()
 ]
+_render_host = os.getenv("RENDER_EXTERNAL_HOSTNAME", "").strip()
+if _render_host and _render_host not in _allowed:
+    _allowed.append(_render_host)
+if not DEBUG and ".onrender.com" not in _allowed:
+    _allowed.append(".onrender.com")
+ALLOWED_HOSTS = _allowed
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -72,7 +79,11 @@ ASGI_APPLICATION = "config.asgi.application"
 _database_url = os.getenv("DATABASE_URL", "").strip()
 if _database_url:
     DATABASES = {
-        "default": dj_database_url.parse(_database_url, conn_max_age=600),
+        "default": dj_database_url.parse(
+            _database_url,
+            conn_max_age=600,
+            ssl_require=not DEBUG,
+        ),
     }
 else:
     DATABASES = {
@@ -115,7 +126,20 @@ CORS_ALLOWED_ORIGINS = [
     ).split(",")
     if o.strip()
 ]
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r.strip()
+    for r in os.getenv("CORS_ALLOWED_ORIGIN_REGEXES", "").split(",")
+    if r.strip()
+]
 CORS_ALLOW_CREDENTIALS = True
+
+_csrf = [o.strip() for o in os.getenv("CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()]
+CSRF_TRUSTED_ORIGINS = _csrf if _csrf else list(CORS_ALLOWED_ORIGINS)
+
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
 
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
@@ -149,16 +173,16 @@ CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
-# Run tasks in-process when Redis is not available (local SQLite demos)
-CELERY_TASK_ALWAYS_EAGER = os.getenv("CELERY_TASK_ALWAYS_EAGER", str(DEBUG)).lower() in {
-    "1",
-    "true",
-    "yes",
-}
+# Set CELERY_TASK_ALWAYS_EAGER=True locally without Redis; False in production with a worker.
+CELERY_TASK_ALWAYS_EAGER = os.getenv(
+    "CELERY_TASK_ALWAYS_EAGER",
+    "True" if DEBUG else "False",
+).lower() in {"1", "true", "yes"}
 CELERY_TASK_EAGER_PROPAGATES = True
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
+NEO4J_ENABLED = os.getenv("NEO4J_ENABLED", "true").lower() in {"1", "true", "yes"}
 NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "codescope-neo4j")

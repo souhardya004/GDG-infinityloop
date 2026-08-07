@@ -23,7 +23,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     });
   } catch {
     throw new ApiError(0, {
-      detail: "Cannot reach API. Start Django on port 8000 (frontend proxies /api → :8000).",
+      detail: "Cannot reach the API. Check that the backend is running and VITE_API_BASE_URL is set correctly.",
     });
   }
 

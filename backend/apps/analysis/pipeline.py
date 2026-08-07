@@ -7,6 +7,7 @@ import logging
 from collections import Counter
 from pathlib import Path
 
+from django.conf import settings
 from django.utils import timezone as dj_timezone
 
 from apps.analysis.models import AnalysisJob, EventLevel, JobEvent, JobStage, JobStatus
@@ -414,6 +415,10 @@ class AnalysisPipeline:
             JobStage.GRAPH_PERSIST,
             f"Saved Postgres graph snapshots: {sum(counts.values())} nodes across {len(counts)} views.",
         )
+
+        if not settings.NEO4J_ENABLED:
+            self.metrics["neo4j"] = "disabled"
+            return
 
         store = Neo4jGraphStore()
         try:
