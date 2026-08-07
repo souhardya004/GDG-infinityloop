@@ -196,6 +196,16 @@ class IngestGitHubView(APIView):
 
 
 def _enqueue_analysis(job: AnalysisJob, **kwargs) -> None:
+    from django.conf import settings
+
+    if getattr(settings, "CELERY_TASK_ALWAYS_EAGER", False):
+        logger.info("CELERY_TASK_ALWAYS_EAGER is True; executing analysis synchronously.")
+        from apps.analysis.pipeline import AnalysisPipeline
+
+        AnalysisPipeline(job_id=str(job.id), **kwargs).run()
+        job.refresh_from_db()
+        return
+
     try:
         async_result = run_full_analysis.delay(str(job.id), **kwargs)
         job.celery_task_id = getattr(async_result, "id", "") or ""
