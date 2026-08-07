@@ -12,11 +12,12 @@ from apps.graphs.services.neo4j_client import Neo4jGraphStore
 from apps.graphs.services.snapshots import ensure_project_graphs, get_snapshot_graph
 from apps.parsers.registry import ParserRegistry
 from apps.projects.models import Project
+from apps.projects.views import get_project_for_user
 
 
 class GraphView(APIView):
     def get(self, request, project_id, graph_type):
-        project = get_object_or_404(Project, id=project_id, owner=request.user)
+        project = get_project_for_user(project_id, request.user)
         if not project.files.exists() and project.status == "draft":
             return Response(
                 {"detail": "Project has no analyzed data yet."},
@@ -93,7 +94,7 @@ class GraphView(APIView):
 
 class NodeDetailView(APIView):
     def get(self, request, project_id, node_uid):
-        project = get_object_or_404(Project, id=project_id, owner=request.user)
+        project = get_project_for_user(project_id, request.user)
         # Search snapshots first
         for snap in project.graphs.all():
             for node in snap.payload.get("nodes") or []:
@@ -131,7 +132,7 @@ class RebuildGraphsView(APIView):
     """Force rebuild graph snapshots from project files on disk."""
 
     def post(self, request, project_id):
-        project = get_object_or_404(Project, id=project_id, owner=request.user)
+        project = get_project_for_user(project_id, request.user)
         if (not project.files.exists() or project.status in {"ingesting", "analyzing", "draft"}) and project.sources.exists():
             from apps.analysis.models import AnalysisJob, JobStatus, JobType
             from apps.analysis.pipeline import AnalysisPipeline

@@ -10,22 +10,32 @@ from apps.analysis.serializers import JobEventSerializer, JobSerializer
 from apps.projects.models import Project
 
 
+def get_job_for_user(job_id: str, project_id: str, user) -> AnalysisJob:
+    from django.db.models import Q
+    return get_object_or_404(
+        AnalysisJob,
+        Q(project__owner=user) | Q(project__owner__isnull=True),
+        id=job_id,
+        project_id=project_id,
+    )
+
+
 class JobDetailView(APIView):
     def get(self, request, project_id, job_id):
-        job = get_object_or_404(AnalysisJob, id=job_id, project_id=project_id, project__owner=request.user)
+        job = get_job_for_user(job_id, project_id, request.user)
         return Response(JobSerializer(job).data)
 
 
 class JobEventsView(APIView):
     def get(self, request, project_id, job_id):
-        job = get_object_or_404(AnalysisJob, id=job_id, project_id=project_id, project__owner=request.user)
+        job = get_job_for_user(job_id, project_id, request.user)
         events = job.events.all()
         return Response(JobEventSerializer(events, many=True).data)
 
 
 class JobCancelView(APIView):
     def post(self, request, project_id, job_id):
-        job = get_object_or_404(AnalysisJob, id=job_id, project_id=project_id, project__owner=request.user)
+        job = get_job_for_user(job_id, project_id, request.user)
         if job.status in {JobStatus.SUCCEEDED, JobStatus.FAILED, JobStatus.CANCELLED}:
             return Response(
                 {"detail": f"Job already {job.status}."},

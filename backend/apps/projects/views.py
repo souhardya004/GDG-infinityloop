@@ -30,6 +30,15 @@ from apps.projects.services.tree import build_file_tree
 logger = logging.getLogger(__name__)
 
 
+def get_project_for_user(project_id: str, user) -> Project:
+    from django.db.models import Q
+    return get_object_or_404(
+        Project,
+        Q(owner=user) | Q(owner__isnull=True),
+        id=project_id,
+    )
+
+
 class ProjectViewSet(
     mixins.CreateModelMixin,
     mixins.RetrieveModelMixin,
@@ -44,9 +53,16 @@ class ProjectViewSet(
     ordering_fields = ("created_at", "name", "loc_total", "file_count")
 
     def get_queryset(self):
-        if self.request.user.is_authenticated:
-            return Project.objects.filter(owner=self.request.user).prefetch_related("languages")
-        return Project.objects.none()
+        if not self.request.user.is_authenticated:
+            return Project.objects.none()
+        from django.db.models import Q
+        return (
+            Project.objects.filter(
+                Q(owner=self.request.user) | Q(owner__isnull=True)
+            )
+            .exclude(status=ProjectStatus.ARCHIVED)
+            .prefetch_related("languages")
+        )
 
     def get_serializer_class(self):
         if self.action == "create":
@@ -72,13 +88,15 @@ class ProjectViewSet(
         from django.conf import settings
         from apps.projects.services.ingest import project_storage_root
 
+        project_id_str = str(instance.id)
+
         # 1. Clean up files on disk
         try:
-            storage_path = project_storage_root(str(instance.id))
+            storage_path = project_storage_root(project_id_str)
             if storage_path.exists():
                 shutil.rmtree(storage_path, ignore_errors=True)
         except Exception as exc:
-            logger.warning("Failed to clean up storage for project %s: %s", instance.id, exc)
+            logger.warning("Failed to clean up storage for project %s: %s", project_id_str, exc)
 
         # 2. Clean up Neo4j if enabled
         if getattr(settings, "NEO4J_ENABLED", False):
@@ -87,19 +105,23 @@ class ProjectViewSet(
 
                 store = Neo4jGraphStore()
                 try:
-                    store.delete_project(str(instance.id))
+                    store.delete_project(project_id_str)
                 finally:
                     store.close()
             except Exception as exc:
-                logger.warning("Failed to delete Neo4j graph for project %s: %s", instance.id, exc)
+                logger.warning("Failed to delete Neo4j graph for project %s: %s", project_id_str, exc)
 
-        # 3. Purge database instance and all cascades (files, snapshots, jobs, sources)
+        # 3. Purge related records explicitly and delete instance permanently
+        instance.sources.all().delete()
+        instance.files.all().delete()
+        instance.graphs.all().delete()
+        instance.jobs.all().delete()
         instance.delete()
 
 
 class FileTreeView(APIView):
     def get(self, request, project_id):
-        project = get_object_or_404(Project, id=project_id, owner=request.user)
+        project = get_project_for_user(project_id, request.user)
         return Response(
             {
                 "project_id": str(project.id),
@@ -113,7 +135,7 @@ class ReanalyzeView(APIView):
     """Re-run analysis for an existing project source."""
 
     def post(self, request, project_id):
-        project = get_object_or_404(Project, id=project_id, owner=request.user)
+        project = get_project_for_user(project_id, request.user)
         if not project.sources.exists() and not project.root_path:
             return Response(
                 {"detail": "No source available to re-analyze."},
@@ -134,7 +156,7 @@ class IngestZipView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request, project_id):
-        project = get_object_or_404(Project, id=project_id, owner=request.user)
+        project = get_project_for_user(project_id, request.user)
         upload = request.FILES.get("file")
         if upload is None:
             return Response(
@@ -184,7 +206,7 @@ class IngestGitHubView(APIView):
     parser_classes = [JSONParser]
 
     def post(self, request, project_id):
-        project = get_object_or_404(Project, id=project_id, owner=request.user)
+        project = get_project_for_user(project_id, request.user)
         serializer = IngestGitHubSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
